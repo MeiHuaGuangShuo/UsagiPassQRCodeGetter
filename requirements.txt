@@ -1,0 +1,5 @@
+uiautomation
+pillow
+pyzbar
+aiohttp
+asyncio
