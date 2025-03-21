@@ -45,7 +45,7 @@ pip install -r requirements.txt
 from PIL import Image, ImageGrab; img=Image.new('RGB', ImageGrab.grab().size, (0,0,0)); img.save('black.png'); img.show()
 ```
 
-你可以在运行该程序时全屏此图并降低亮度以避免烧屏，在获取二维码时会自动激微信窗口
+你可以在运行该程序时全屏此图并降低亮度以避免烧屏，在获取二维码时会自动激活微信窗口
 
 
 然后输入下列命令启动程序
