@@ -139,8 +139,8 @@ def main():
         else:
             auto.Logger.WriteLine("Failed to detect QR code in 10 seconds.")
             return
-        code = decode(screenshot)[0].data.decode('utf-8')
-        print(f"QR code content: {code}")
+        code = decode(screenshot)[0].data.decode('utf-8')[4:]
+        print(f"Code: {code}")
         expTime = reqTime + timedelta(minutes=10)
         expTimeStr = expTime.strftime("%m/%d %H:%M")
 
