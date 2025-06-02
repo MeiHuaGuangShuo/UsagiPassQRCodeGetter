@@ -19,12 +19,32 @@
 
 重要的事情说三遍！否则下一个被hack的就是你！
 
+在首次运行前修改代码，运行一次后会生成config.ini文件，包含你所更改后的值
 ```python
 entryPoint = "/login"  # 登录页面入口，建议修改以防非法登录
 loginUserName = "admin"  # 登录用户名
 loginPassword = "maimaidx"  # 登录密码，如果你想被hack的话可以不设置
 port = 8080  # 监听端口
 dxpass_url = "https://up.turou.fun/"  # 用于显示DXPass的URL
+mode: Literal["normal", "marked", "demo"] = "marked"  # 运行模式，normal为正常模式，marked会隐藏敏感信息，demo会替换敏感信息
+```
+
+后续可以在 `config.ini` 文件修改配置
+
+```ini
+[Default]
+# 登录页面入口，建议修改以防非法登录
+entryPoint = /login
+# 登录用户名
+loginUserName = admin
+# 登录密码
+loginPassword = maimaidx
+# 监听端口 (1-65535)
+port = 8080
+# 用于显示DXPass的URL
+dxpass_url = https://up.turou.fun/
+# 运行模式，normal为正常模式，marked会隐藏敏感信息，demo会替换敏感信息
+mode = marked
 ```
 
 1.打开微信，找到“舞萌 | 中二”公众号
@@ -54,16 +74,25 @@ from PIL import Image, ImageGrab; img=Image.new('RGB', ImageGrab.grab().size, (0
 python main.py
 ```
 
-6.打开浏览器，输入`http://127.0.0.1:8080/login`（端口号是8080的话）进行登录，登录成功后会进行一次获取二维码，获取成功则在UsagiPass登录完成后显示二维码和过期时间，否则没有二维码和时间为12：00
+6.打开浏览器，输入`http://127.0.0.1:8080/login` （端口号是8080的话）进行登录，登录成功后会进行一次获取二维码，获取成功则在UsagiPass登录完成后显示二维码和过期时间，否则没有二维码和时间为12：00
 
-7.后续通过`http://127.0.0.1:8080/`即可获取二维码
+7.后续通过`http://127.0.0.1:8080/` 即可获取二维码
 
-8.若要登出，访问`http://127.0.0.1:8080/logout`后关闭浏览器进程销毁BasicAuth缓存即可。
+8.若要登出，访问`http://127.0.0.1:8080/logout` 后关闭浏览器进程销毁BasicAuth缓存即可。
 
 
 # 拥有一台公网服务器但是不是Windows无法运行微信？
 
 可以寻找内网穿透工具如ssh，或者使用我的另一个项目[HttpThrouth](https://github.com/MeiHuaGuangShuo/http_through)转发HTTP请求到本地（要求服务器拥有Python环境和公网IP）
+
+# 提供的接口
+
+| 路径 Path     | 功能                                                  |
+|-------------|-----------------------------------------------------|
+| `/`         | 显示UsagiPass                                         |
+| `/login`(可变) | 登录入口                                                |
+| `/maimai`   | 获取 `MAID` 和格式化字符串，以 `{'maid': str, 'time': str}` 返回 |
+| `/logout`   | 清除浏览器Cookie缓存（执行后需要**关闭浏览器进程**销毁BasicAuth缓存）            |
 
 # 杂谈
 这个项目是因为看到了两个项目，一个是UsagiPass，另一个是通过电脑获取二维码并发送到手机应用，我就在想能不能结合一下，然后就诞生了这个项目。
