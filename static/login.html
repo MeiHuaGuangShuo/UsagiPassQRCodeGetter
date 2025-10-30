@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/static/js/sweetalert2.js"></script>
+    <title>登录 - UsagiPass QRCode Getter</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 背景图容器 */
+        .background-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+        }
+
+        .background-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+
+        .background-image.active {
+            opacity: 1;
+        }
+
+        .background-image.landscape {
+            background-image: url('/static/images/134223637.webp');
+        }
+
+        .background-image.portrait {
+            background-image: url('/static/images/132984565.webp');
+        }
+
+        /* 渐变遮罩层 */
+        .background-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.8) 0%, rgba(118, 75, 162, 0.8) 100%);
+            z-index: -1;
+        }
+        
+        .login-container {
+        position: relative;          /* 让 ::before / ::after 能绝对定位 */
+        width: 100%;
+        max-width: 400px;
+        padding: 40px;
+        border-radius: 12px;
+        overflow: hidden;            /* 保证圆角裁切模糊区域 */
+
+        /* 亚克力核心 */
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        backdrop-filter: blur(20px) saturate(180%);
+        background-color: rgba(255, 255, 255, 0.55);   /* 上层亮面 */
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+        }
+
+        /* 3. 两层额外渐变：底层暗面 + 上层亮面 */
+        .login-container::before,
+        .login-container::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        border-radius: inherit;
+        }
+        .login-container::before {
+        /* 暗面：左上到右下的微弱阴影 */
+        background: linear-gradient(135deg,
+                    rgba(0, 0, 0, 0.03) 0%,
+                    rgba(0, 0, 0, 0.08) 100%);
+        }
+        .login-container::after {
+        /* 亮面：右上到左下的高光 */
+        background: linear-gradient(45deg,
+                    rgba(255, 255, 255, 0.15) 0%,
+                    rgba(255, 255, 255, 0.05) 100%);
+        }
+
+        .login-container {
+            mix-blend-mode: overlay;
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .login-header h1 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        .login-header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group.error input {
+            border-color: #e74c3c;
+        }
+
+        .error-message {
+            color: #e74c3c;
+            font-size: 14px;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .form-group.error .error-message {
+            display: block;
+        }
+
+        .login-button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: opacity 0.3s;
+        }
+
+        .login-button:hover:not(:disabled) {
+            opacity: 0.9;
+        }
+
+        .login-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="background-container">
+        <div class="background-image landscape"></div>
+        <div class="background-image portrait"></div>
+        <div class="background-overlay"></div>
+    </div>
+    
+    <div class="login-container">
+        <div class="login-header">
+            <h1>UsagiPass QRCode Getter</h1>
+        </div>
+        
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">用户名</label>
+                <input type="text" id="username" name="username" required autocomplete="username">
+                <div class="error-message">请输入用户名</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">密码</label>
+                <input type="password" id="password" name="password" required autocomplete="current-password">
+                <div class="error-message">请输入密码</div>
+            </div>
+            
+            <button type="submit" class="login-button">登录</button>
+            
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>正在登录...</p>
+            </div>
+        </form>
+        
+        <div class="footer">
+            <p>UsagiPass QRCode Getter v1.0</p>
+            <p>Background Image by <a href="https://www.pixiv.net/users/27236214">青葉もち</a></p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
+            const formGroups = document.querySelectorAll('.form-group');
+            const loading = document.querySelector('.loading');
+            const loginButton = document.querySelector('.login-button');
+            
+            // 清除之前的错误状态
+            formGroups.forEach(group => group.classList.remove('error'));
+            
+            let hasError = false;
+            
+            if (!username) {
+                document.querySelector('.form-group:nth-child(1)').classList.add('error');
+                hasError = true;
+            }
+            
+            if (!password) {
+                document.querySelector('.form-group:nth-child(2)').classList.add('error');
+                hasError = true;
+            }
+            
+            if (hasError) return;
+            
+            // 显示加载状态
+            loading.classList.add('active');
+            loginButton.disabled = true;
+            
+            try {
+                const formData = new FormData();
+                formData.append('username', username);
+                formData.append('password', password);
+                
+                const response = await fetch(window.location.pathname, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    loginButton.innerText = '登录成功，正在跳转...';
+                    setTimeout(() => {
+                        loginButton.disabled = true;
+                    }, 50);
+                    setTimeout(() => {
+                        loginButton.disabled = false;
+                        loginButton.innerText = '登录';
+                    }, 5000);
+                    window.location.href = data.redirect || '/';
+                } else {
+                    Swal.fire({
+                        title: "登录失败",
+                        text: data.error || '未知错误',
+                        icon: "error",
+                        timer: 2000,
+                        timerProgressBar: true,
+                        showConfirmButton: true
+                    });
+                }
+            } catch (error) {
+                Swal.fire({
+                    title: "网络错误，请重试",
+                    text: error.message || '未知错误',
+                    icon: "error",
+                    timer: 2000,
+                    timerProgressBar: true,
+                    showConfirmButton: true
+                });
+            } finally {
+                loading.classList.remove('active');
+                loginButton.disabled = false;
+            }
+        });
+        
+        // 回车键提交
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('loginForm').dispatchEvent(new Event('submit'));
+            }
+        });
+    </script>
+    
+    <script>
+        // 背景图切换功能
+        function updateBackgroundImage() {
+            const landscapeImg = document.querySelector('.background-image.landscape');
+            const portraitImg = document.querySelector('.background-image.portrait');
+            const windowRatio = window.innerWidth / window.innerHeight;
+            
+            // 如果宽高比大于1.2，认为是横屏，否则是竖屏
+            if (windowRatio > 1.2) {
+                landscapeImg.classList.add('active');
+                portraitImg.classList.remove('active');
+            } else {
+                portraitImg.classList.add('active');
+                landscapeImg.classList.remove('active');
+            }
+        }
+        
+        // 初始化背景图
+        updateBackgroundImage();
+        
+        // 监听窗口大小变化
+        window.addEventListener('resize', updateBackgroundImage);
+        
+        // 监听设备方向变化（移动设备）
+        window.addEventListener('orientationchange', () => {
+            setTimeout(updateBackgroundImage, 100);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html style="height:100%">
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>舞萌DXPass</title>
+<style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{height:100%}
+    #container{position:relative;width:100%;height:100%;overflow:hidden}
+    #qrLayer{
+        position:absolute;top:0;left:0;width:100%;height:100%;
+        display:flex;align-items:center;justify-content:center;
+        background:#fff;z-index:10;
+    }
+    #qrBox{
+        text-align:center;
+    }
+    #qrBox canvas{max-width:90vw;max-height:90vh}
+    #qrText{margin-top:15px;font:16px/1.4 sans-serif;color:#333}
+    #appFrame{
+        width:100%;height:100%;border:none;display:none
+    }
+    #qrText1{color:#d31e1e;font-size:20px}
+    #qrText3{color:#d31e1e;font-size:20px}
+</style>
+</head>
+<body>
+<div id="container">
+    <div id="qrLayer">
+        <div id="qrBox">
+            <canvas id="qrcode"></canvas>
+            <div id="qrText">可用机台有「舞萌DX」和「中二节奏」</div>
+            <div id="qrText2">获取耗时 : {spend_time}s</div>
+            <div id="qrText1"><strong>有效期限 : {exp_time}</strong></div>
+            <div id="qrText3", style="display:none"></div>
+        </div>
+    </div>
+    <iframe id="appFrame"
+            src="{final_url}"
+            allow="fullscreen">
+    </iframe>
+</div>
+
+<script src="/static/js/qrcode.min.js"></script>
+<script>
+let loaded = false;
+let not_load = false;
+const url   = "{final_url}";
+const maid  = "SGWC" + (url.match(/[?&]maid=([^&]+)/) || [])[1];
+if(maid){
+    QRCode.toCanvas(document.getElementById('qrcode'), maid, {
+        width : Math.min(window.innerWidth, window.innerHeight) * 0.8,
+        margin: 2,
+        errorCorrectionLevel: 'L'
+    });
+}else{
+    document.getElementById('qrText').textContent = '无法生成二维码';
+    document.getElementById('qrText1').display = 'none';
+}
+
+const frame = document.getElementById('appFrame');
+frame.onload = function() {
+    loaded = true;
+    if (not_load) {
+        return;
+    }
+    document.getElementById('qrLayer').style.display = 'none';
+    frame.style.display = 'block';
+};
+frame.onerror = function() {
+    if (not_load) {
+        return;
+    }
+    document.getElementById('qrText3').innerHTML = '<strong>无法加载UsagePass</strong><br>';
+    document.getElementById('qrText3').style.display = 'block';
+}
+setTimeout(() => {
+    if (!loaded) {
+        not_load = true;
+        frame.src = 'about:blank';
+        frame.style.display = 'none';
+        document.getElementById('qrText3').innerHTML = '<strong>无法加载UsagePass</strong><br>';
+        document.getElementById('qrText3').style.display = 'block';
+    }
+}, 8000);
+</script>
+</body>
+</html>

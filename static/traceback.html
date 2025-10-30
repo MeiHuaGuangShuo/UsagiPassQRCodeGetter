@@ -1,0 +1,253 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/static/js/sweetalert2.js"></script>
+    <title>错误追踪 - UsagiPass QRCode Getter</title>
+    
+    <!-- Prism.js 主题 & 核心 -->
+    <link rel="stylesheet"
+          href="/static/css/prism-tomorrow.min.css">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        /* 背景图容器 */
+        .background-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+        }
+
+        .background-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+
+        .background-image.active {
+            opacity: 1;
+        }
+
+        .background-image.landscape {
+            background-image: url('/static/images/134223637.webp');
+        }
+
+        .background-image.portrait {
+            background-image: url('/static/images/132984565.webp');
+        }
+
+        /* 渐变遮罩层 */
+        .background-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.8) 0%, rgba(118, 75, 162, 0.8) 100%);
+            z-index: -1;
+        }
+        
+        /* 主容器 - 亚克力效果 */
+        .traceback-container {
+            position: relative;
+            width: 100%;
+            max-width: 900px;
+            padding: 40px;
+            border-radius: 12px;
+            overflow: hidden;
+            margin: 40px 0;
+
+            /* 亚克力核心 */
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            backdrop-filter: blur(20px) saturate(180%);
+            background-color: rgba(255, 255, 255, 0.55);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+        }
+
+        /* 3D 效果层 */
+        .traceback-container::before,
+        .traceback-container::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            border-radius: inherit;
+        }
+        .traceback-container::before {
+            /* 暗面：左上到右下的微弱阴影 */
+            background: linear-gradient(135deg,
+                        rgba(0, 0, 0, 0.03) 0%,
+                        rgba(0, 0, 0, 0.08) 100%);
+        }
+        .traceback-container::after {
+            /* 亮面：右上到左下的高光 */
+            background: linear-gradient(45deg,
+                        rgba(255, 255, 255, 0.15) 0%,
+                        rgba(255, 255, 255, 0.05) 100%);
+        }
+
+        .traceback-container {
+            mix-blend-mode: luminosity;
+        }
+
+        .traceback-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .traceback-header h1 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        .traceback-header p {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        /* 错误信息容器 */
+        .error-container {
+            background: rgba(30, 30, 30, 0.9);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            overflow-x: auto;
+            margin: 20px 0;
+        }
+
+        pre.line-numbers {
+            margin: 0;
+            padding: 1.5rem 2rem;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            font-family: "Fira Code", Consolas, monospace;
+        }
+
+        /* 折叠长路径 */
+        .token.filename {
+            color: #569cd6;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .token.filename:hover {
+            text-decoration: underline;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            color: #666;
+            font-size: 12px;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .traceback-container {
+                padding: 20px;
+                margin: 10px;
+            }
+            
+            pre.line-numbers {
+                padding: 1rem;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="background-container">
+        <div class="background-image landscape"></div>
+        <div class="background-image portrait"></div>
+        <div class="background-overlay"></div>
+    </div>
+    
+    <div class="traceback-container">
+        <div class="traceback-header">
+            <h1>错误追踪</h1>
+            <p>UsagiPass QRCode Getter 运行时发生异常</p>
+        </div>
+        <p>发生了错误 : {{ERROR_MESSAGE}}</p>
+        <p>以下为报错堆栈信息 : </p>
+        <div class="error-container">
+            <pre class="line-numbers"><code class="language-python">{{TRACEBACK}}</code></pre>
+        </div>
+        <p>如果您认为这是程序的 BUG ，请通过<a href="https://github.com/MeiHuaGuangShuo/UsagiPassQRCodeGetter/issues/new">Github Issue</a>反馈给开发者。</p>
+        <div class="footer">
+            <p>UsagiPass QRCode Getter v1.0</p>
+            <p>Background Image by <a href="https://www.pixiv.net/users/27236214">青葉もち</a></p>
+        </div>
+    </div>
+
+    <!-- Prism.js 脚本 -->
+    <script src="/static/js/prism.min.js"></script>
+    <script src="/static/js/prism-line-numbers.min.js"></script>
+    <script src="/static/js/prism-python.min.js"></script>
+
+    <!-- 折叠长路径（可选） -->
+    <script>
+        // 折叠长路径
+        document.querySelectorAll('.token.filename').forEach(node => {
+            const full = node.textContent;
+            const short = full.replace(/^.*[\\/]/, '…/');
+            node.textContent = short;
+            node.title = full;
+        });
+
+        // 背景图切换功能
+        function updateBackgroundImage() {
+            const landscapeImg = document.querySelector('.background-image.landscape');
+            const portraitImg = document.querySelector('.background-image.portrait');
+            const windowRatio = window.innerWidth / window.innerHeight;
+            
+            // 如果宽高比大于1.2，认为是横屏，否则是竖屏
+            if (windowRatio > 1.2) {
+                landscapeImg.classList.add('active');
+                portraitImg.classList.remove('active');
+            } else {
+                portraitImg.classList.add('active');
+                landscapeImg.classList.remove('active');
+            }
+        }
+        
+        // 初始化背景图
+        updateBackgroundImage();
+        
+        // 监听窗口大小变化
+        window.addEventListener('resize', updateBackgroundImage);
+        
+        // 监听设备方向变化（移动设备）
+        window.addEventListener('orientationchange', () => {
+            setTimeout(updateBackgroundImage, 100);
+        });
+    </script>
+</body>
+</html>
