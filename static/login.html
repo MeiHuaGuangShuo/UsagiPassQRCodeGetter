@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="/static/js/sweetalert2.js"></script>
+    <script src="/static/js/fp.min.js"></script>
+    <!-- CAP Worker Js Replace -->
     <title>登录 - UsagiPass QRCode Getter</title>
     <style>
         * {
@@ -218,6 +220,10 @@
             color: #666;
             font-size: 12px;
         }
+
+        cap-widget {
+            --cap-widget-width: 100%;
+        }
     </style>
 </head>
 <body>
@@ -244,8 +250,10 @@
                 <input type="password" id="password" name="password" required autocomplete="current-password">
                 <div class="error-message">请输入密码</div>
             </div>
+
+            <!-- cap-widget -->
             
-            <button type="submit" class="login-button">登录</button>
+            <button type="submit" class="login-button" id="loginButton">登录</button>
             
             <div class="loading">
                 <div class="spinner"></div>
@@ -260,6 +268,35 @@
     </div>
 
     <script>
+        window.CAP_CUSTOM_WASM_URL = "https://cdn.iocdn.cc/npm/@cap.js/wasm@0.0.4/browser/cap_wasm.min.js";
+        let cap_token = "";
+        const cap_widget = document.querySelector("#cap");
+
+        if (cap_widget) {
+            let loginBtn = document.getElementById("loginButton");
+            loginBtn.disabled = true;
+            loginBtn.innerText = '请先完成验证码';
+            cap_widget.addEventListener("solve", async function (e) {
+                cap_token = e.detail.token;
+                loginBtn.disabled = false;
+                loginBtn.innerText = '登录';
+            });
+            cap_widget.addEventListener("error", async function (e) {
+                loginBtn.disabled = true;
+                loginBtn.innerText = '验证失败，请重试';
+                setTimeout(() => {
+                    cap_widget.reset();
+                    loginBtn.innerText = '请先完成验证码';
+                }, 2000)
+            });
+        }
+
+        async function getFingerprint() {
+            const result = await FingerprintJS.load();
+            const visitorId = await result.get();
+            return visitorId.visitorId
+        }
+
         document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
@@ -294,6 +331,10 @@
                 const formData = new FormData();
                 formData.append('username', username);
                 formData.append('password', password);
+                formData.append('fp', await getFingerprint());
+                if (cap_token) {
+                    formData.append('token', cap_token);
+                }
                 
                 const response = await fetch(window.location.pathname, {
                     method: 'POST',
@@ -325,6 +366,10 @@
                         timerProgressBar: true,
                         showConfirmButton: true
                     });
+                    if (cap_widget) {
+                        loginButton.disabled = true;
+                        loginButton.innerText = "请先完成验证码";
+                    }
                 }
             } catch (error) {
                 Swal.fire({
@@ -335,9 +380,18 @@
                     timerProgressBar: true,
                     showConfirmButton: true
                 });
+                if (cap_widget) {
+                    loginButton.disabled = true;
+                    loginButton.innerText = "请先完成验证码";
+                }
             } finally {
                 loading.classList.remove('active');
                 loginButton.disabled = false;
+                if (cap_widget) {
+                    cap_widget.reset();
+                    loginButton.disabled = true;
+                    cap_token = "";
+                }
             }
         });
         

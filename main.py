@@ -2,6 +2,7 @@ import asyncio
 import configparser
 from contextlib import contextmanager
 import ctypes
+import collections
 import hashlib
 import random
 import secrets
@@ -12,15 +13,16 @@ import traceback
 from ctypes import wintypes
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Dict, Tuple
 from urllib.parse import quote_plus
-
+import time
+import threading
 import uiautomation as auto
 from PIL import Image, ImageEnhance
 from aiohttp import http
 http.SERVER_SOFTWARE = "cloudflare"
 
-from aiohttp import web
+from aiohttp import web, ClientSession
 from aiohttp.web_request import BaseRequest
 from pyzbar.pyzbar import decode
 
@@ -30,6 +32,7 @@ loginPassword = "maimaidx"  # 登录密码
 port = 8080  # 监听端口
 waitTime = 10  # 等待时间
 dxpass_url = "https://up.turou.fun/"  # 用于显示DXPass的URL
+capjs_endpoint = ""  # 用于显示Cap验证码的API地址
 mode: Literal["normal", "marked", "demo", "web_only"] = "normal"  # 运行模式，normal为正常模式，marked会隐藏敏感信息，demo会替换敏感信息，web_only只显示DXPass页面
 certfile = "server.crt"  # 证书文件名
 keyfile = "server.key"  # 密钥文件名
@@ -51,6 +54,8 @@ if not Path("./config.ini").exists():
                 f"waitTime = {waitTime}\n"
                 "# 用于显示DXPass的URL\n"
                 f"dxpass_url = {dxpass_url}\n"
+                "# 用于显示CapJS验证码的API地址\n"
+                f"capjs_endpoint = {capjs_endpoint}\n"
                 "# 运行模式，normal为正常模式，marked会隐藏敏感信息，demo会替换敏感信息，web_only只显示DXPass页面\n"
                 f"mode = {mode}\n"
                 "# 证书文件名\n"
@@ -67,6 +72,7 @@ loginPassword = config.get("Default", "loginPassword", fallback=loginPassword)
 port = config.getint("Default", "port", fallback=port)
 waitTime = config.getint("Default", "waitTime", fallback=waitTime)
 dxpass_url = config.get("Default", "dxpass_url", fallback=dxpass_url)
+capjs_endpoint = config.get("Default", "capjs_endpoint", fallback=capjs_endpoint)
 mode = config.get("Default", "mode", fallback=mode)  # NOQA
 certfile = config.get("Default", "certfile", fallback=certfile)
 keyfile = config.get("Default", "keyfile", fallback=keyfile)
@@ -93,6 +99,79 @@ ShowWindow.restype = wintypes.BOOL
 class RECT(ctypes.Structure):
     _fields_ = [("left", wintypes.LONG), ("top", wintypes.LONG),
                 ("right", wintypes.LONG), ("bottom", wintypes.LONG)]
+
+
+MAX_VID_COUNT = 50_000          # 内存保护：最多同时缓存多少 visitorId
+WINDOW = 300                    # 5 分钟
+MAX_FAIL = 10                   # 允许失败次数
+
+_lock = threading.RLock()
+_bucket: Dict[str, collections.deque] = {}  # visitorId -> deque[timestamp]
+
+
+if capjs_endpoint.endswith('/'):
+    capjs_endpoint = capjs_endpoint[:-1]
+
+capjs_script = '<script src="/static/js/cap.js"></script>'
+cap_widget = f"""\
+<div class="form-group"><cap-widget
+  id="cap"
+  data-cap-api-endpoint="{capjs_endpoint}/api/"
+  data-cap-i18n-verifying-label="正在查询你的成分..."
+  data-cap-i18n-initial-state="我是纯正wmc"
+  data-cap-i18n-solved-label="确实是wmc"
+  data-cap-i18n-error-label="我觉得你不像wmc"
+  data-cap-i18n-wasm-disabled="启用 WASM 以更快解决验证码"
+></cap-widget></div>"""
+
+
+def _clean_old(ts_deque: collections.deque, now: float) -> None:
+    """把窗口外的过期时间戳踢掉"""
+    cutoff = now - WINDOW
+    while ts_deque and ts_deque[0] < cutoff:
+        ts_deque.popleft()
+
+
+def is_allowed(visitor_id: str) -> Tuple[bool, int]:
+    """
+    返回 (是否允许, 剩余可用次数)
+    """
+    global _bucket
+    now = time.time()
+
+    with _lock:
+        dq = _bucket.get(visitor_id)
+        if dq is None:
+            if len(_bucket) >= MAX_VID_COUNT:
+                oldest_vid = min(_bucket, key=lambda vid: _bucket[vid][0] if _bucket[vid] else 0)
+                _bucket.pop(oldest_vid)
+            dq = collections.deque()
+            _bucket[visitor_id] = dq
+
+        # 清理过期
+        _clean_old(dq, now)
+
+        # 当前失败次数
+        curr = len(dq)
+        allowed = curr < MAX_FAIL
+        remain = max(0, MAX_FAIL - curr)
+        return allowed, remain
+
+
+def record_fail(visitor_id: str) -> None:
+    """登录失败时调一下，把当前时间戳塞进去"""
+    with _lock:
+        dq = _bucket.get(visitor_id)
+        if dq is None:
+            dq = collections.deque()
+            _bucket[visitor_id] = dq
+        dq.append(time.time())
+
+
+def reset(visitor_id: str) -> None:
+    """登录成功后清掉该设备计数器"""
+    with _lock:
+        _bucket.pop(visitor_id, None)
     
 
 @contextmanager
@@ -144,6 +223,7 @@ if port < 1 or port > 65535:
     exit(1)
 on_active = 0
 active_sessions = {}  # 存储活跃会话
+used_token = collections.deque(maxlen=1000)  # 存储已使用的token
 
 
 def find_window_handle(title_part: str, exact=False) -> int:
@@ -260,6 +340,8 @@ async def login_handler(_):
     try:
         with open("static/login.html", "r", encoding="utf-8") as file:
             login_html = file.read()
+        if capjs_endpoint:
+            login_html = login_html.replace("<!-- CAP Worker Js Replace -->", capjs_script).replace("<!-- cap-widget -->", cap_widget)
         return web.Response(text=login_html, content_type='text/html')
     except FileNotFoundError:
         return web.Response(text="Login page not found", status=404)
@@ -273,13 +355,48 @@ async def post_login_handler(request):
             form_data = await request.post()
             username = form_data.get('username', '').strip()
             password = form_data.get('password', '').strip()
+            token = form_data.get('token', '').strip()
+            fp = form_data.get('fp', '').strip()
         else:
             # 处理查询参数
             username = request.query.get('username', '').strip()
             password = request.query.get('password', '').strip()
+            token = request.query.get('token', '').strip()
+            fp = request.query.get('fp', '').strip()
+
+        if not fp:
+            return web.json_response({'success': False, 'error': f'登录失败次数过多，请{WINDOW}秒后重试'})
+        allowed, _ = is_allowed(fp)
+        if not allowed:
+            return web.json_response({'success': False, 'error': f'登录失败次数过多，请{WINDOW}秒后重试'})
+        if capjs_endpoint:
+            if not token or token in used_token:
+                record_fail(fp)
+                return web.json_response({'success': False, 'error': '用户名或密码错误'})
+            used_token.append(token)
+            async with ClientSession() as session:
+                try:
+                    async with session.post(f'{capjs_endpoint}/api/validate', json={
+                        "token": token,
+                        "keepToken": False
+                    }) as res:
+                        print(await res.text())
+                        if res.ok:
+                            data = await res.json()
+                            if not data['success']:
+                                record_fail(fp)
+                                return web.json_response({'success': False, 'error': '用户名或密码错误'})
+                        else:
+                            record_fail(fp)
+                            return web.json_response({'success': False, 'error': '用户名或密码错误'})
+                except Exception:
+                    traceback.print_exc()
+                    record_fail(fp)
+                    return web.json_response({'success': False, 'error': '用户名或密码错误'})
 
         if not username or not password:
             if request.headers.get('Accept') == 'application/json':
+                record_fail(fp)
                 return web.json_response({'success': False, 'error': '用户名和密码不能为空'})
             else:
                 return web.HTTPSeeOther(entryPoint)
@@ -304,8 +421,10 @@ async def post_login_handler(request):
                 secure=False,  # 开发环境设为False，生产环境应设为True
                 samesite='Lax'
             )
+            reset(fp)
             return response
 
+        record_fail(fp)
         return web.json_response({'success': False, 'error': '用户名或密码错误'})
 
     except Exception:
