@@ -77,7 +77,11 @@ mode = config.get("Default", "mode", fallback=mode)  # NOQA
 certfile = config.get("Default", "certfile", fallback=certfile)
 keyfile = config.get("Default", "keyfile", fallback=keyfile)
 
-PROJECT_ROOT = Path(__file__).parent
+if hasattr(sys, '_nuitka_binary_dir'):
+    PROJECT_ROOT = Path(sys._nuitka_binary_dir)
+else:
+    PROJECT_ROOT = Path(__file__).parent
+
 STATIC_DIR = PROJECT_ROOT / "static"
 ALLOW_EXT = {'.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.html', '.webp', '.avif'}
 
@@ -184,7 +188,7 @@ def keepScreenWakeup():
         kernal32.SetThreadExecutionState(0x80000000)
 
 
-with open("static/qrcode.html", "r", encoding="utf-8") as f:
+with open(STATIC_DIR / "qrcode.html", "r", encoding="utf-8") as f:
     qrcodeHtml = f.read()
 
 if loginPassword == "maimaidx":
@@ -338,7 +342,7 @@ async def auth_middleware(_, handler):
 async def login_handler(_):
     """显示登录页面"""
     try:
-        with open("static/login.html", "r", encoding="utf-8") as file:
+        with open(STATIC_DIR / "login.html", "r", encoding="utf-8") as file:
             login_html = file.read()
         if capjs_endpoint:
             login_html = login_html.replace("<!-- CAP Worker Js Replace -->", capjs_script).replace("<!-- cap-widget -->", cap_widget)
@@ -686,7 +690,7 @@ async def htmlPage(_: BaseRequest):
         on_active = 0
         if res:
             url = f"{dxpass_url}?maid={res[0]}&time={quote_plus(res[1])}"
-            with open("static/main.html", "r", encoding="utf-8") as file:
+            with open(STATIC_DIR / "main.html", "r", encoding="utf-8") as file:
                 html = file.read()
             completeHtml = html.replace("{final_url}", url).replace("{exp_time}", res[1]).replace("{spend_time}",
                                                                                                   str(res[2]))
@@ -697,7 +701,7 @@ async def htmlPage(_: BaseRequest):
         tb_str = traceback.format_exc()
         err_str = f"{e.__class__.__name__}: {e}"
         print(tb_str)
-        with open("static/traceback.html", "r", encoding="utf-8") as file:
+        with open(STATIC_DIR / "traceback.html", "r", encoding="utf-8") as file:
             html = file.read()
         completeHtml = html.replace("{{ERROR_MESSAGE}}", err_str).replace("{{TRACEBACK}}", tb_str)
         return web.Response(text=completeHtml, content_type='text/html')
