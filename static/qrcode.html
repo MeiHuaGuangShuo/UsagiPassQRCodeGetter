@@ -31,6 +31,7 @@
             <div id="qrText">可用机台有「舞萌DX」和「中二节奏」</div>
             <div id="qrText2">获取耗时 : {spend_time}s</div>
             <div id="qrText1"><strong>有效期限 : {exp_time}</strong></div>
+            <div id="qrText3"><a href="/logout">退出登录</a>&nbsp;&nbsp;<a href="javascript:location.reload()">刷新二维码</a></div>
         </div>
     </div>
 </div>
@@ -48,6 +49,8 @@ if(maid){
 }else{
     document.getElementById('qrText').textContent = '无法生成二维码';
     document.getElementById('qrText1').display = 'none';
+    document.getElementById('qrText2').display = 'none';
+    document.getElementById('qrText3').display = 'none';
 }
 </script>
 </body>
