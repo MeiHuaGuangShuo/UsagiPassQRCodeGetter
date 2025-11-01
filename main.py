@@ -8,7 +8,6 @@ import random
 import secrets
 import ssl
 import sys
-import time
 import traceback
 from ctypes import wintypes
 from datetime import datetime, timedelta
@@ -19,18 +18,19 @@ import time
 import threading
 import uiautomation as auto
 from PIL import Image, ImageEnhance
+from pyzbar.pyzbar import decode
 from aiohttp import http
 http.SERVER_SOFTWARE = "cloudflare"
 
 from aiohttp import web, ClientSession
 from aiohttp.web_request import BaseRequest
-from pyzbar.pyzbar import decode
 
 entryPoint = "/login"  # 登录页面入口，建议修改以防非法登录
 loginUserName = "admin"  # 登录用户名
 loginPassword = "maimaidx"  # 登录密码
 port = 8080  # 监听端口
 waitTime = 10  # 等待时间
+minimize_after_success = 0  # 获取到二维码后最小化窗口，0为不启用，1为启用
 dxpass_url = "https://up.turou.fun/"  # 用于显示DXPass的URL
 capjs_endpoint = ""  # 用于显示Cap验证码的API地址
 mode: Literal["normal", "marked", "demo", "web_only"] = "normal"  # 运行模式，normal为正常模式，marked会隐藏敏感信息，demo会替换敏感信息，web_only只显示DXPass页面
@@ -52,6 +52,8 @@ if not Path("./config.ini").exists():
                 f"port = {port}\n"
                 "# 等待时间 (秒)，对于较好的电脑可以设置为5秒\n"
                 f"waitTime = {waitTime}\n"
+                "# 获取到二维码后最小化窗口，0为不启用，1为启用\n"
+                f"minimize_after_success = {minimize_after_success}\n"
                 "# 用于显示DXPass的URL\n"
                 f"dxpass_url = {dxpass_url}\n"
                 "# 用于显示CapJS验证码的API地址\n"
@@ -71,6 +73,7 @@ loginUserName = config.get("Default", "loginUserName", fallback=loginUserName)
 loginPassword = config.get("Default", "loginPassword", fallback=loginPassword)
 port = config.getint("Default", "port", fallback=port)
 waitTime = config.getint("Default", "waitTime", fallback=waitTime)
+minimize_after_success = config.getint("Default", "minimize_after_success", fallback=minimize_after_success)
 dxpass_url = config.get("Default", "dxpass_url", fallback=dxpass_url)
 capjs_endpoint = config.get("Default", "capjs_endpoint", fallback=capjs_endpoint)
 mode = config.get("Default", "mode", fallback=mode)  # NOQA
@@ -551,13 +554,13 @@ def main():
     if not hwnd:
         on_active = 0
         raise RuntimeError("未找到 舞萌丨中二 窗口句柄")
+    nowFocusWindow = auto.GetForegroundControl()
     if user32.IsIconic(hwnd):
         user32.ShowWindow(hwnd, 9)
     maimaiWindow = auto.WindowControl(searchDepth=1, Name="舞萌丨中二")
     if not maimaiWindow.Exists(0, 0):
         on_active = 0
         raise RuntimeError("无法获取 舞萌丨中二 窗口元素")
-    nowFocusWindow = auto.GetForegroundControl()
     btn = maimaiWindow.ButtonControl(Name="玩家二维码")
     messages = maimaiWindow.ListControl(Name="消息", ClassName="mmui::RecyclerListView").GetChildren()
     reqTime = datetime.now()
@@ -578,24 +581,26 @@ def main():
                 print(f"Last QR code: {last_code if mode != 'marked' else mark_str(last_code)}")
     if btn.Exists(0, 0) and mode != "demo":
         try:
-            user32.ShowWindow(hwnd, 5)
-            ctypes.windll.user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 2 | 1)
-            user32.SetForegroundWindow(hwnd)
+            t = time.time()
+            while user32.GetForegroundWindow() != hwnd and time.time() - t < 1:
+                user32.ShowWindow(hwnd, 5)
+                ctypes.windll.user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 2 | 1)
+                user32.SetForegroundWindow(hwnd)
             pt = wintypes.POINT()
             user32.GetCursorPos(ctypes.byref(pt))
             rx, ry = pt.x, pt.y
             btn.Click(simulateMove=False, waitTime=0)
             user32.SetCursorPos(rx, ry)
-            auto.Logger.WriteLine('Clicked!')
+            print('Clicked!')
         finally:
             ctypes.windll.user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0,
                                               0x0001 | 0x0002 | 0x0020)
             if nowFocusWindow is not None:
                 nowFocusWindow.SetFocus()
     now = time.time()
+    messagesControl = maimaiWindow.ListControl(Name="消息", ClassName="mmui::RecyclerListView")
     while time.time() - now < waitTime:
-        messages = maimaiWindow.ListControl(Name="消息", ClassName="mmui::RecyclerListView").GetChildren()
-        # embed()
+        messages = messagesControl.GetChildren()
         message = messages[-1] if messages else None
         if mode == "demo" and message:
             messageBox = message
@@ -616,25 +621,25 @@ def main():
         on_active = 0
         print(messages)
         raise Exception(f"Failed to locate QR code in {waitTime} seconds.")
-        # embed()
     if messageBox and messageBox.Exists():
         now = time.time()
         while time.time() - now < waitTime:
             screenshot = convertImageL(messageBox)
             # screenshot.show()
             if is_valid_qrcode(screenshot):
-                auto.Logger.WriteLine("Valid QR code detected!")
+                print("Valid QR code detected!")
                 break
             else:
-                auto.Logger.WriteLine("Invalid QR code detected, retrying...")
+                print("Invalid QR code detected, retrying...")
                 time.sleep(0.5)
         else:
             on_active = 0
-            auto.Logger.WriteLine(f"Failed to detect QR code in {waitTime} seconds.")
+            print(f"Failed to detect QR code in {waitTime} seconds.")
             return None
-        maimaiWindow.SetTopmost(False)
         if nowFocusWindow is not None:
             nowFocusWindow.SetFocus()
+            if minimize_after_success:
+                ctypes.windll.user32.ShowWindow(hwnd, 7)
         code = decode(screenshot)[0].data.decode('utf-8')[4:]
         if mode == "demo":
             code = f"MAID{year}{month}{day}{hour}{minute}{second}" + hashlib.sha256(code.encode()).hexdigest().upper()
@@ -646,7 +651,7 @@ def main():
         url = f"{dxpass_url}?maid={code}&time={quote_plus(expTimeStr)}"
         print(f"URL: {url if mode != 'marked' else mark_str(url)}")
         sptTime = round(time.time() - handleTime, 2)
-        auto.Logger.WriteLine(f"Completed in {sptTime:.2f} s.")
+        print(f"Completed in {sptTime:.2f} s.")
         on_active = 0
         return code, expTimeStr, sptTime
     else:
@@ -660,7 +665,7 @@ def main():
             url = f"{dxpass_url}?maid={code}&time={quote_plus(expTimeStr)}"
             print(f"URL: {url}")
             sptTime = round(time.time() - handleTime, 2)
-            auto.Logger.WriteLine(f"Completed in {sptTime:.2f} s.")
+            print(f"Completed in {sptTime:.2f} s.")
             on_active = 0
             return code, expTimeStr, sptTime
         print("窗格定位失败")
