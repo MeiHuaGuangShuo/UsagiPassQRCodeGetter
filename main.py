@@ -227,7 +227,8 @@ if port < 1 or port > 65535:
                  "*****************************************************\n"
                  )
     print(error_str)
-    exit(1)
+    time.sleep(2)
+    sys.exit(1)
 on_active = 0
 active_sessions = {}  # 存储活跃会话
 used_token = collections.deque(maxlen=1000)  # 存储已使用的token
@@ -775,11 +776,23 @@ async def web_server():
         ssl_context.load_cert_chain(certfile=certfile, keyfile=keyfile)
         site = web.TCPSite(runner, '0.0.0.0', port, ssl_context=ssl_context)
         print("SSL enabled")
-        await site.start()
+        try:
+            await site.start()
+        except OSError as e:
+            if 'error while attempting to bind on address':
+                print(f"Address already in use: {e}")
+                time.sleep(2)
+                sys.exit(1)
         print(f'Server started at https://localhost:{port}')
     else:
         site = web.TCPSite(runner, '0.0.0.0', port)
-        await site.start()
+        try:
+            await site.start()
+        except OSError as e:
+            if 'error while attempting to bind on address':
+                print(f"Address already in use: {e}")
+                time.sleep(2)
+                sys.exit(1)
         print(f'Server started at http://localhost:{port}')
 
     try:
@@ -798,5 +811,5 @@ if __name__ == '__main__':
                 main()
             else:
                 asyncio.run(web_server())
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, asyncio.CancelledError):
         pass
