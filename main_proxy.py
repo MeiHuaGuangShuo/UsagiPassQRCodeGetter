@@ -545,7 +545,7 @@ def convertImageL(comp: auto.Control) -> Image:
 
 
 async def main():
-    global on_active
+    global on_active, CACHE_QRCODE
     if mode == "web_only":
         now = datetime.now()
         dt = now.strftime("%y%m%d%H%M%S")
@@ -623,6 +623,7 @@ async def main():
         on_active = 0
         raise Exception(f"Failed to locate QR code in {waitTime} seconds.")
     if vqr:
+        CACHE_QRCODE = b""
         code = decode(vqr)[0].data.decode('utf-8')[4:]
         if mode == "demo":
             code = f"MAID{year}{month}{day}{hour}{minute}{second}" + hashlib.sha256(code.encode()).hexdigest().upper()
@@ -638,6 +639,7 @@ async def main():
         on_active = 0
         return code, expTimeStr, sptTime
     else:
+        CACHE_QRCODE = b""
         maimaiWindow.SetTopmost(False)
         if mode == "demo":
             code = f"MAID{year}{month}{day}{hour}{minute}{second}" + hashlib.sha256(
