@@ -115,6 +115,34 @@ python main.py
 
 8.若要登出，访问`http://127.0.0.1:8080/logout` 即可。
 
+# 使用代理方式获取二维码
+
+大部分与[上方](#如何使用)相同。不同点在于：
+- `config.ini` 增加了 `proxyPort` 选项用于设置代理监听端口
+- 需要在第四后前执行[额外的操作](#微信400示例)
+- 您需要在微信的代理中手动勾选使用代理并保存
+- 此方法相对截屏方式平均快大约0.2秒
+
+### 微信4.0.0+示例
+
+先安装代理包
+
+```shell
+pip install mitmproxy
+```
+
+然后运行程序直到出现下列提示
+```text
+Server started at http://localhost:8080
+Proxy server started at http://localhost:8081
+```
+
+然后按照下方图片配置代理
+
+![](.github/static/wxproxy1.png)
+![](.github/static/wxproxy2.png)
+
+如果配置正确则会直接闪回登录界面，然后继续进行 [如何使用](#如何使用) 的第五步操作
 
 # 增加登录安全性
 
